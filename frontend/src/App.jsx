@@ -101,7 +101,7 @@ function App() {
         <VStack spacing={8}>
           <Heading size="xl" color="blue.600">
             <Icon as={FiMapPin} mr={2} />
-            IP Lookup
+            IP Address Location Finder
           </Heading>
 
           <Card w="full" variant="elevated">
