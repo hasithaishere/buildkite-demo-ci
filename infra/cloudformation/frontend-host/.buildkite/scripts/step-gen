@@ -1,0 +1,183 @@
+#!/bin/bash
+
+# Check for required tools
+check_requirements() {
+    local missing_tools=()
+    
+    if ! command -v yq &> /dev/null; then
+        missing_tools+=("yq")
+    fi
+    
+    if ! command -v aws &> /dev/null; then
+        missing_tools+=("aws-cli")
+    fi
+    
+    if [ ${#missing_tools[@]} -ne 0 ]; then
+        echo "Error: The following required tools are missing:"
+        printf '%s\n' "${missing_tools[@]}"
+        echo "Please install them before running this script."
+        exit 1
+    fi
+}
+
+# Function to get stack name from metadata and environment
+get_stack_name() {
+    local environment=$1
+    local stack_name_suffix=$(yq eval '.Metadata.StackNameSuffix' template.yaml)
+    echo "${environment}${stack_name_suffix}"
+}
+
+# Function to get AWS regions
+get_aws_regions() {
+    aws ec2 describe-regions --query 'Regions[].RegionName' --output text | tr '\t' '\n' | sort
+}
+
+# Function to generate initial environment and region selection block
+generate_initial_block() {
+    local regions=$(get_aws_regions)
+    local stack_name_suffix=$(yq eval '.Metadata.StackNameSuffix' template.yaml)
+    local app_name=$(yq eval '.Metadata.Name' template.yaml)
+    
+    cat << EOF
+steps:
+  - block: ":globe_with_meridians: Deploy ${app_name}"
+    key: "environment-setup"
+    fields:
+      - select: "Target Environment"
+        key: "target_environment"
+        options:
+          - label: "Staging"
+            value: "staging"
+          - label: "Production"
+            value: "production"
+        required: true
+        default: "staging"
+      
+      - select: "AWS Region"
+        key: "aws_region"
+        options:
+EOF
+    
+    # Generate region options
+    while read -r region; do
+        cat << EOF
+          - label: "$region"
+            value: "$region"
+EOF
+    done <<< "$regions"
+    
+    cat << EOF
+        required: true
+        default: "ap-southeast-1"
+
+EOF
+}
+
+# Function to check existing stack and get parameters
+generate_stack_check_step() {
+    cat << EOF
+  - label: ":mag: Check Existing Stack"
+    key: "stack-check"
+    depends_on: "environment-setup"
+    command: |
+      # Set environment and region from previous step
+      export AWS_REGION="\${BUILDKITE_BUILD_ID}_AWS_REGION"
+      export TARGET_ENVIRONMENT="\${BUILDKITE_BUILD_ID}_TARGET_ENVIRONMENT"
+      
+      # Get stack name from metadata
+      STACK_NAME="\${TARGET_ENVIRONMENT}$(yq eval '.Metadata.StackNameSuffix' template.yaml)"
+      
+      echo "Checking for existing stack: \$STACK_NAME in region \$AWS_REGION"
+      
+      # Check if stack exists and get parameters
+      if aws cloudformation describe-stacks --stack-name "\$STACK_NAME" --region "\$AWS_REGION" > stack_info.json 2>/dev/null; then
+        echo "Stack \$STACK_NAME exists. Extracting parameters..."
+        
+        # Extract and format parameters
+        aws cloudformation describe-stacks \\
+          --stack-name "\$STACK_NAME" \\
+          --region "\$AWS_REGION" \\
+          --query 'Stacks[0].Parameters' \\
+          --output json > stack_parameters.json
+        
+        buildkite-agent meta-data set "has_existing_stack" "true"
+        buildkite-agent meta-data set "stack_parameters" "\$(cat stack_parameters.json)"
+      else
+        echo "No existing stack found with name \$STACK_NAME"
+        buildkite-agent meta-data set "has_existing_stack" "false"
+      fi
+EOF
+}
+
+# Function to generate parameters block
+generate_parameters_block() {
+    local app_name=$(yq eval '.Metadata.Name' template.yaml)
+    
+    cat << EOF
+  - block: ":rocket: Configure ${app_name} Parameters"
+    key: "configure-parameters"
+    depends_on: "stack-check"
+    fields:
+      - select: "Environment"
+        key: "environment"
+        options:
+          - label: "Staging"
+            value: "staging"
+          - label: "Production"
+            value: "production"
+        required: true
+        default: "\${TARGET_ENVIRONMENT}"
+EOF
+}
+
+# Function to generate deployment step
+generate_deployment_step() {
+    local app_name=$(yq eval '.Metadata.Name' template.yaml)
+    
+    cat << EOF
+  - label: ":aws: Deploy ${app_name}"
+    key: "deploy"
+    depends_on: "configure-parameters"
+    command: |
+      # Set environment and region
+      export AWS_REGION="\${BUILDKITE_BUILD_ID}_AWS_REGION"
+      export TARGET_ENVIRONMENT="\${BUILDKITE_BUILD_ID}_TARGET_ENVIRONMENT"
+      
+      # Get stack name from metadata
+      STACK_NAME="\${TARGET_ENVIRONMENT}$(yq eval '.Metadata.StackNameSuffix' template.yaml)"
+      
+      echo "Deploying stack: \$STACK_NAME in region \$AWS_REGION"
+      
+      # Deploy using CloudFormation
+      aws cloudformation deploy \\
+        --template-file template.yaml \\
+        --stack-name "\$STACK_NAME" \\
+        --region "\$AWS_REGION" \\
+        --parameter-overrides \\
+          Environment="\${BUILDKITE_BUILD_ID}_ENVIRONMENT" \\
+        --capabilities CAPABILITY_IAM \\
+        --no-fail-on-empty-changeset
+EOF
+}
+
+# Main pipeline generation function
+generate_pipeline() {
+    # Generate initial environment and region selection
+    generate_initial_block
+    
+    # Generate stack check step
+    generate_stack_check_step
+    
+    # Generate parameters block
+    generate_parameters_block
+    
+    # Generate deployment step
+    generate_deployment_step
+}
+
+# Main execution
+check_requirements
+mkdir -p .buildkite
+generate_pipeline > .buildkite/pipeline.yml
+
+echo "Pipeline configuration has been generated in .buildkite/pipeline.yml"

@@ -1,0 +1,30 @@
+steps:
+  - block: ":earth_americas: Select Environment and AWS Region"
+    fields:
+      - select: "Environment"
+        key: "ENVIRONMENT"
+        default: "staging"
+        options:
+          - label: "Staging"
+            value: "staging"
+          - label: "Production"
+            value: "production"
+        required: true
+      - select: "AWS Region"
+        key: "AWS_REGION"
+        default: "us-east-1"
+        options:
+          - label: "US East (N. Virginia)"
+            value: "us-east-1"
+          - label: "US West (Oregon)"
+            value: "us-west-2"
+          - label: "EU West (Ireland)"
+            value: "eu-west-1"
+          - label: "Asia Pacific (Singapore)"
+            value: "ap-southeast-1"
+        required: true
+
+  - wait
+
+  - label: ":gear: Generate CloudFormation Pipeline"
+    command: "infra/cloudformation/frontend-host/.buildkite/scripts/step-gen-v2"

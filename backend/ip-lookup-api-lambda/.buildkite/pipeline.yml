@@ -1,0 +1,3 @@
+steps:
+  - label: "Triggering pipelines"
+    command: "echo 'Lambda - IP Lookup API'"

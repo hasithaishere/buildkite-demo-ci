@@ -1,0 +1,13 @@
+#!/bin/bash
+
+AWS_REGION=$(buildkite-agent meta-data get "AWS_REGION")
+ENVIRONMENT=$(buildkite-agent meta-data get "ENVIRONMENT")
+
+echo "Deploying frontend to $ENVIRONMENT in $AWS_REGION"
+
+
+pwd
+
+cd ./infra/cloudformation/frontend-host/
+
+.buildkite/scripts/generate-pipeline $ENVIRONMENT $AWS_REGION

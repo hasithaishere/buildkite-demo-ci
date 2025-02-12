@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+
+echo "--- Build Frontend ..."
+
+cd frontend
+
+npm install
+
+npm run build
+
+echo "--- Deploy Frontend ..."
+
+ls -la

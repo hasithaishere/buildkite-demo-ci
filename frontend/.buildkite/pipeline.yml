@@ -1,0 +1,4 @@
+steps:
+  - label: "Build and Deploy Frontend"
+    commands:
+      - "frontend/.buildkite/scripts/build-and-deploy"

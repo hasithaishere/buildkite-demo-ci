@@ -1,0 +1,27 @@
+steps:
+  - label: "Triggering pipelines"
+    plugins:
+      - chronotc/monorepo-diff#v2.0.4:
+          diff: ".buildkite/scripts/diff"
+          interpolation: false
+          watch:
+            - path:
+                - "infra/cloudformation/frontend-host"
+              config:
+                command: "buildkite-agent pipeline upload infra/cloudformation/frontend-host/.buildkite/pipeline.yml"
+                label: ":aws-cloudformation: Cloudformation - Frontend App Hosting"
+            - path:
+                - "frontend"
+              config:
+                command: "buildkite-agent pipeline upload frontend/.buildkite/pipeline.yml"
+                label: ":globe_with_meridians: Frontend"
+            - path:
+                - "backend/ip-lookup-api-lambda"
+              config:
+                command: "buildkite-agent pipeline upload backend/ip-lookup-api-lambda/.buildkite/pipeline.yml"
+                label: ":aws-lambda: Lambda - IP Lookup API"
+  - wait
+
+  # Tagging build last commit for diffing purpose
+  - label: "Tag Build"
+    command: "aws ssm put-parameter --name \"/buildkite/pipeline/state/$BUILDKITE_ORGANIZATION_SLUG/$BUILDKITE_PIPELINE_SLUG\" --overwrite --value \"$BUILDKITE_COMMIT\" --type String"

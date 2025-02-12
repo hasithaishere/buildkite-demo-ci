@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# Set error handling
+set -euo pipefail
+
+# Function to parse CloudFormation template and extract metadata
+parse_template() {
+    local template_file=$1
+    
+    # Convert YAML to JSON using cfn-flip
+    JSON_OUTPUT=$(cfn-flip "$template_file")
+
+    # Extract stack name suffix from metadata
+    STACK_NAME_SUFFIX=$(echo "$JSON_OUTPUT" | jq -r '.Metadata.StackNameSuffix')
+    STACK_BASE_NAME=$(echo "$JSON_OUTPUT" | jq -r '.Metadata.Name')
+}
+
+# Function to check if stack exists
+check_stack_exists() {
+    local stack_name=$1
+    local region=$2
+    
+    if aws cloudformation describe-stacks --stack-name "$stack_name" --region "$region" 2>/dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    # Required environment variables
+    if [ -z "${BUILDKITE_PIPELINE_SLUG:-}" ]; then
+        echo "Error: BUILDKITE_PIPELINE_SLUG is not set"
+        exit 1
+    fi
+
+    # Set variables
+    ENVIRONMENT=${1:-staging}  # Default to staging if not provided
+    AWS_REGION=${2:-us-east-1}  # Default to us-east-1 if not provided
+    TEMPLATE_FILE=${3:-template.yaml}  # Default to template.yaml if not provided
+    
+    # Parse template
+    parse_template "$TEMPLATE_FILE"
+    
+    # Generate stack name
+    STACK_NAME="${ENVIRONMENT}${STACK_NAME_SUFFIX}"
+
+    ./.buildkite/scripts/cfn-execute "$AWS_REGION" "$ENVIRONMENT" "$STACK_NAME"
+}
+
+# Execute main function with provided arguments
+main "$@"

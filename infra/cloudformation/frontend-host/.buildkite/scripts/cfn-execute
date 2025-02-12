@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Exit on error
+set -e
+
+# Function to check if stack exists
+check_stack_exists() {
+    local stack_name=$1
+    local region=$2
+    
+    if aws cloudformation describe-stacks --stack-name "$stack_name" --region "$region" &> /dev/null; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Function to wait for stack operation to complete
+wait_for_stack() {
+    local stack_name=$1
+    local region=$2
+    local operation=$3
+    
+    echo "Waiting for stack $operation to complete..."
+    
+    if [ "$operation" == "create" ]; then
+        aws cloudformation wait stack-create-complete --stack-name "$stack_name" --region "$region"
+    else
+        aws cloudformation wait stack-update-complete --stack-name "$stack_name" --region "$region"
+    fi
+    
+    echo "Stack $operation completed successfully!"
+}
+
+# Check if required arguments are provided
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <region> <environment> <stack-name>"
+    echo "Example: $0 us-east-1 staging my-stack"
+    exit 1
+fi
+
+# Assign arguments to variables
+AWS_REGION=$1
+ENVIRONMENT=$2
+STACK_NAME=$3
+
+echo "Deploying to:"
+echo "Region: $AWS_REGION"
+echo "Environment: $ENVIRONMENT"
+echo "Stack Name: $STACK_NAME"
+
+# Check if stack exists
+if check_stack_exists "$STACK_NAME" "$AWS_REGION"; then
+    echo "--- Stack exists, updating..."
+    
+    aws cloudformation update-stack \
+        --stack-name "$STACK_NAME" \
+        --template-body file://template.yaml \
+        --parameters ParameterKey=Environment,ParameterValue="$ENVIRONMENT" \
+        --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+        --region "$AWS_REGION" || {
+            # Check if the error is "No updates are to be performed"
+            if [[ $? -eq 255 && $error == *"No updates"* ]]; then
+                echo "No updates needed for stack"
+                exit 0
+            else
+                echo "Error updating stack"
+                exit 1
+            fi
+        }
+    
+    wait_for_stack "$STACK_NAME" "$AWS_REGION" "update"
+else
+    echo "--- Stack does not exist, creating..."
+    
+    aws cloudformation create-stack \
+        --stack-name "$STACK_NAME" \
+        --template-body file://template.yaml \
+        --parameters ParameterKey=Environment,ParameterValue="$ENVIRONMENT" \
+        --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+        --region "$AWS_REGION"
+    
+    wait_for_stack "$STACK_NAME" "$AWS_REGION" "create"
+fi
+
+# Get and display stack outputs
+echo "--- Stack outputs:"
+aws cloudformation describe-stacks \
+    --stack-name "$STACK_NAME" \
+    --region "$AWS_REGION" \
+    --query 'Stacks[0].Outputs' \
+    --output table

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+set -ueo pipefail
+
+LATEST_BUILT_TAG=$(aws ssm get-parameter --name "/buildkite/pipeline/state/$BUILDKITE_ORGANIZATION_SLUG/$BUILDKITE_PIPELINE_SLUG" --query "Parameter.Value" --output text)
+
+git diff --name-only $LATEST_BUILT_TAG
