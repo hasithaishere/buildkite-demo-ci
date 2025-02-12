@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'CloudFormation template to create S3 bucket for static website hosting with CloudFront distribution.'
+Description: 'CloudFormation template to create S3 bucket for static website hosting with CloudFront distribution and Origin Access Control'
 
 Metadata:
   Name: "Frontend-App-Hosting-Infra"
