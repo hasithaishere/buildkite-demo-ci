@@ -15,7 +15,7 @@ CLOUDFRONT_ID=$(aws ssm get-parameter --name "/buildkite/pipeline/infra/$BUILDKI
 S3_BUCKET=$(aws ssm get-parameter --name "/buildkite/pipeline/infra/$BUILDKITE_ORGANIZATION_SLUG/$BUILDKITE_PIPELINE_SLUG/S3_BUCKET" --query "Parameter.Value" --output text)
 
 echo "--- Uploading to S3 Bucket ..."
-aws s3 sync .dist/ s3://$S3_BUCKET
+aws s3 sync ./dist/ s3://$S3_BUCKET
 
 echo "--- Creating CloudFront Invalidation ..."
 aws cloudfront create-invalidation --distribution-id $CLOUDFRONT_ID --paths "/*"
